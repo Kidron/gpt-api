@@ -1,7 +1,4 @@
-// index.js
 require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 const express = require('express');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
@@ -9,18 +6,8 @@ const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const User = require('./models/user');
-const authController = require('./controllers/authController');
-
-async function testSupabaseConnection() {
-    const { data, error } = await supabase.from('users_gpt').select('*').limit(1);
-    
-    if (error) {
-      console.error('Error connecting to Supabase:', error.message);
-    } else {
-      console.log('Supabase connection successful:', data);
-    }
-  }
-  
+const authRoutes = require('./routes/authRoutes');
+const MongoClient = require('mongodb').MongoClient
 
 const app = express();
 
@@ -44,11 +31,7 @@ app.use(passport.session());
 
 passport.use(
   new LocalStrategy({ usernameField: 'email' }, async (email, password, done) => {
-    const { user, error } = await User.findByEmail(email);
-
-    if (error) {
-      return done(error);
-    }
+    const user = await User.findByEmail(email);
 
     if (!user) {
       return done(null, false, { message: 'Incorrect email.' });
@@ -65,20 +48,29 @@ passport.use(
 );
 
 passport.serializeUser((user, done) => {
-  done(null, user.id);
+  done(null, user._id);
 });
 
 passport.deserializeUser(async (id, done) => {
-  const { user, error } = await User.findById(id);
-  done(error, user);
+  const user = await User.findById(id);
+  done(null, user);
 });
 
-app.post('/register', authController.register);
-app.post('/login', passport.authenticate('local'), authController.login);
-app.post('/logout', authController.logout);
+app.use('/', authRoutes);
+
+// Connect to database
+(async () => {
+  try {
+    const uri = process.env.DB_CONNECTION_STRING;
+    MongoClient.connect(uri, { useUnifiedTopology: true })
+    // await client.connect();
+    console.log('Connected to database');
+  } catch (error) {
+    console.error('Unable to connect to database:', error);
+  }
+})();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  testSupabaseConnection();
 });

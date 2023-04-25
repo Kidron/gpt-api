@@ -1,28 +1,37 @@
-// models/user.js
-const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
+const { MongoClient } = require('mongodb');
+const uri = process.env.DB_CONNECTION_STRING;
+const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
-module.exports = {
-  async findByEmail(email) {
-    const { data, error } = await supabase
-      .from('users_gpt')
-      .select('*')
-      .eq('email', email)
-      .single();
-    return { user: data, error };
-  },
+class User {
+  static async init() {
+    await client.connect();
+    console.log('Connected to MongoDB Atlas');
+    const db = client.db('auth');
+    User.users = db.collection('users');
+  }
 
-  async findById(id) {
-    const { data, error } = await supabase
-      .from('users_gpt')
-      .select('*')
-      .eq('id', id)
-      .single();
-    return { user: data, error };
-  },
+  static async createUser({ email, password }) {
+    const existingUser = await User.users.findOne({ email });
 
-  async createUser(user) {
-    const { data, error } = await supabase.from('users_gpt').insert(user);
-    return { user: data, error };
-  },
-};
+    if (existingUser) {
+      return { error: 'An account with this email already exists.' };
+    }
+
+    const result = await User.users.insertOne({ email, password });
+    const user = result.ops[0];
+
+    return { user };
+  }
+
+  static async findByEmail(email) {
+    const user = await User.users.findOne({ email });
+    return { user };
+  }
+
+  static async findById(id) {
+    const user = await User.users.findOne({ _id: id });
+    return { user };
+  }
+}
+
+module.exports = User;
